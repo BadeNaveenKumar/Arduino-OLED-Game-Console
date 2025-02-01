@@ -1,0 +1,660 @@
+Flappy bird
+
+
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+// Pin Definitions
+#define OLED_RESET -1
+Adafruit_SSD1306 display(OLED_RESET);
+#define BUZZER_PIN 8
+#define BUTTON_PIN 2
+#define JOYSTICK_X A0
+#define JOYSTICK_Y A1
+#define JOYSTICK_BTN 4
+
+// Game Variables
+int birdY = 30;
+int birdX = 10;
+int pipeX = 128;
+int pipeGap = 20;
+int pipeHeight = random(10, 40);
+int score = 0;
+int gravity = 1;
+int birdVelocity = 0;
+bool gameOver = false;
+
+void setup() {
+  // Initialize OLED display
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  display.clearDisplay();
+  display.display();
+  
+  // Initialize buzzer and buttons
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(BUTTON_PIN, INPUT_PULLUP); // Use internal pull-up resistor for button
+  pinMode(JOYSTICK_BTN, INPUT_PULLUP);
+
+  // Seed the random number generator for random pipe heights
+  randomSeed(analogRead(0));
+
+  // Welcome Screen
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 10);
+  display.println("Flappy Bird!");
+  display.println("Press to start...");
+  display.display();
+  
+  // Wait for button press to start the game
+  while (digitalRead(BUTTON_PIN) == HIGH);
+  
+  display.clearDisplay();
+  display.display();
+}
+
+void loop() {
+  if (!gameOver) {
+    updateBird();
+    updatePipes();
+    checkCollision();
+    drawGame();
+    delay(50); // Controls the speed of the game
+  } else {
+    gameOverScreen();
+    if (digitalRead(BUTTON_PIN) == LOW) {
+      resetGame();
+    }
+  }
+}
+
+void updateBird() {
+  // Read joystick to move bird
+  int joystickY = analogRead(JOYSTICK_Y);
+  if (joystickY < 400) {
+    birdVelocity = -3; // Move bird up
+  } else {
+    birdVelocity += gravity;
+  }
+  
+  birdY += birdVelocity;
+  if (birdY < 0) birdY = 0; // Prevent bird from going out of bounds
+  if (birdY > 63) birdY = 63; // Prevent bird from falling off the screen
+}
+
+void updatePipes() {
+  pipeX -= 2; // Move pipes left
+
+  if (pipeX < -10) { // Pipe goes off screen, reset it
+    pipeX = 128;
+    pipeHeight = random(10, 40);
+    score++;
+    tone(BUZZER_PIN, 1000, 100); // Play beep sound when score increases
+  }
+}
+
+void checkCollision() {
+  // Check if bird hits the top or bottom of the pipe
+  if ((birdY < pipeHeight || birdY > pipeHeight + pipeGap) && pipeX < birdX + 6 && pipeX > birdX - 6) {
+    gameOver = true;
+    tone(BUZZER_PIN, 500, 1000); // Play game over sound
+  }
+}
+
+void drawGame() {
+  display.clearDisplay();
+
+  // Draw bird
+  display.fillRect(birdX, birdY, 6, 6, WHITE);
+  
+  // Draw pipe
+  display.fillRect(pipeX, 0, 10, pipeHeight, WHITE);
+  display.fillRect(pipeX, pipeHeight + pipeGap, 10, 64 - pipeHeight - pipeGap, WHITE);
+
+  // Draw score
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.print("Score: ");
+  display.print(score);
+
+  display.display();
+}
+
+void gameOverScreen() {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0, 20);
+  display.println("Game Over!");
+  display.setCursor(0, 30);
+  display.print("Score: ");
+  display.println(score);
+  display.setCursor(0, 40);
+  display.println("Press button to restart.");
+  display.display();
+}
+
+void resetGame() {
+  birdY = 30;
+  birdVelocity = 0;
+  pipeX = 128;
+  score = 0;
+  gameOver = false;
+}
+
+
+
+
+
+
+Pong game
+
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+
+// Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
+#define OLED_RESET -1 // Set to -1 as we are not using the reset pin
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// Pin Definitions
+const int JOYSTICK_X_PIN = A0; // Joystick X-axis (VRX)
+const int JOYSTICK_Y_PIN = A1; // Joystick Y-axis (VRY)
+const int BUZZER_PIN = 8;      // Buzzer pin
+const int BUTTON1_PIN = 2;     // Start/Confirm button
+const int BUTTON2_PIN = 3;     // Move Left paddle button
+
+// Game Variables
+int paddleHeight = 20;
+int paddleWidth = 3;
+
+// Right Paddle (controlled by joystick)
+int rightPaddleX = SCREEN_WIDTH - paddleWidth - 1;
+int rightPaddleY = (SCREEN_HEIGHT / 2) - (paddleHeight / 2);
+
+// Left Paddle (controlled by button)
+int leftPaddleX = 0;
+int leftPaddleY = (SCREEN_HEIGHT / 2) - (paddleHeight / 2);
+
+// Ball
+int ballX = SCREEN_WIDTH / 2;
+int ballY = SCREEN_HEIGHT / 2;
+int ballRadius = 2;
+int ballSpeedX = 2;
+int ballSpeedY = 2;
+
+int rightPlayerScore = 0;
+int leftPlayerScore = 0;
+
+int maxScore = 15;  // Default maximum score
+bool gameStarted = false;    // Variable to track if the game has started
+bool scoreAdjusted = false;  // To track if the score adjustment screen has been passed
+
+// Function to draw the paddles
+void drawPaddles() {
+  // Draw right paddle
+  display.fillRect(rightPaddleX, rightPaddleY, paddleWidth, paddleHeight, SSD1306_WHITE);
+
+  // Draw left paddle
+  display.fillRect(leftPaddleX, leftPaddleY, paddleWidth, paddleHeight, SSD1306_WHITE);
+}
+
+// Function to draw the ball
+void drawBall() {
+  display.fillCircle(ballX, ballY, ballRadius, SSD1306_WHITE);
+}
+
+// Function to play sound on the buzzer
+void playBuzzer(int frequency, int duration) {
+  tone(BUZZER_PIN, frequency, duration);
+}
+
+// Setup function
+void setup() {
+  // Initialize the display
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3C for 128x64
+    Serial.println(F("SSD1306 allocation failed"));
+    for (;;); // Don't proceed, loop forever
+  }
+  display.clearDisplay();
+
+  // Pin Modes
+  pinMode(JOYSTICK_X_PIN, INPUT);
+  pinMode(JOYSTICK_Y_PIN, INPUT);
+  pinMode(BUTTON1_PIN, INPUT_PULLUP); // Start/Confirm button
+  pinMode(BUTTON2_PIN, INPUT_PULLUP); // Left paddle button
+  pinMode(BUZZER_PIN, OUTPUT);
+
+  // Initialize variables
+  ballX = SCREEN_WIDTH / 2;
+  ballY = SCREEN_HEIGHT / 2;
+
+  // Display the initial screen
+  showStartScreen();
+}
+
+// Function to show the initial welcome screen
+void showStartScreen() {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(20, 10);
+  display.print("WELCOME TO PONG!");
+  display.setCursor(20, 30);
+  display.print("Press Button 1");
+  display.setCursor(20, 40);
+  display.print("to Start");
+  display.display();
+
+  // Wait for the player to press Button 1 to start the game
+  while (digitalRead(BUTTON1_PIN) == HIGH) {
+    // Wait for button press (loop until the button is pressed)
+  }
+  playBuzzer(1000, 200); // Play a sound to indicate game start
+  adjustMaxScoreScreen();
+}
+
+// Function to adjust the maximum score using VRX joystick
+void adjustMaxScoreScreen() {
+  while (!scoreAdjusted) {
+    // Read the joystick X-axis to adjust the max score
+    int joystickXVal = analogRead(JOYSTICK_X_PIN);
+    int adjustedScore = map(joystickXVal, 0, 1023, 5, 50);  // Map VRX to range between 5 and 50
+    adjustedScore = (adjustedScore / 5) * 5;  // Round to nearest multiple of 5
+
+    // Display the max score selection screen
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(20, 10);
+    display.print("Set Max Score");
+    display.setCursor(20, 30);
+    display.print("Max Score: ");
+    display.print(adjustedScore);
+    display.setCursor(20, 50);
+    display.print("Press Button 1");
+    display.display();
+
+    // Update the max score with the adjusted value
+    maxScore = adjustedScore;
+
+    // Wait for the player to press Button 1 to confirm
+    if (digitalRead(BUTTON1_PIN) == LOW) {
+      playBuzzer(1000, 200); // Play a sound to confirm
+      scoreAdjusted = true;
+      gameStarted = true;
+    }
+  }
+}
+
+// Function to reset the game and show the start screen
+void resetGame() {
+  if (digitalRead(BUTTON1_PIN) == LOW) {
+    // Reset ball, paddles, and scores
+    ballX = SCREEN_WIDTH / 2;
+    ballY = SCREEN_HEIGHT / 2;
+    ballSpeedX = 2;
+    ballSpeedY = 2;
+    rightPlayerScore = 0;
+    leftPlayerScore = 0;
+
+    // Play a reset sound
+    playBuzzer(2000, 500);
+
+    // Return to the welcome screen and wait for a new game to start
+    gameStarted = false;
+    scoreAdjusted = false;
+    showStartScreen();
+  }
+}
+
+// Function to declare a winner and reset the game
+void declareWinner(const char* winner) {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(20, 20);
+  display.print(winner);
+  display.setCursor(20, 40);
+  display.print("Wins!");
+  display.display();
+  
+  // Play a winning sound
+ // playBuzzer(1500, 1000);
+  
+  // Wait for 3 seconds to display the winner
+  delay(3000);
+
+  // Reset the game and return to start screen
+  showStartScreen();
+}
+
+// Function to move the right paddle using the joystick
+void moveRightPaddle() {
+  int joystickYVal = analogRead(JOYSTICK_Y_PIN);
+  int mappedY = map(joystickYVal, 0, 1023, 0, SCREEN_HEIGHT - paddleHeight);
+  rightPaddleY = mappedY;
+}
+
+// Function to move the left paddle using button control
+void moveLeftPaddle() {
+  if (digitalRead(BUTTON2_PIN) == LOW) {
+    leftPaddleY -= 2; // Move up when button pressed
+    if (leftPaddleY < 0) leftPaddleY = 0; // Keep within bounds
+  } else {
+    leftPaddleY += 2; // Move down otherwise
+    if (leftPaddleY + paddleHeight > SCREEN_HEIGHT) leftPaddleY = SCREEN_HEIGHT - paddleHeight;
+  }
+}
+
+// Game loop
+void loop() {
+  if (!gameStarted) {
+    return;  // Don't run the game loop until the game has started
+  }
+
+  display.clearDisplay();
+
+  // Move paddles
+  moveRightPaddle();
+  moveLeftPaddle();
+
+  // Reset game if the reset button is pressed
+  resetGame();
+
+  // Move ball
+  ballX += ballSpeedX;
+  ballY += ballSpeedY;
+
+  // Ball collision with top or bottom walls
+  if (ballY - ballRadius <= 0 || ballY + ballRadius >= SCREEN_HEIGHT) {
+    ballSpeedY = -ballSpeedY;
+  }
+
+  // Ball collision with right paddle
+  if (ballX + ballRadius >= rightPaddleX && ballY >= rightPaddleY && ballY <= rightPaddleY + paddleHeight) {
+    ballSpeedX = -ballSpeedX;
+    rightPlayerScore++;
+    playBuzzer(1200, 100); // Play sound on paddle hit
+  }
+
+  // Ball collision with left paddle
+  if (ballX - ballRadius <= leftPaddleX + paddleWidth && ballY >= leftPaddleY && ballY <= leftPaddleY + paddleHeight) {
+    ballSpeedX = -ballSpeedX;
+    leftPlayerScore++;
+    playBuzzer(1200, 100); // Play sound on paddle hit
+  }
+
+  // Ball out of bounds (miss) on right side
+  if (ballX + ballRadius >= SCREEN_WIDTH) {
+    ballX = SCREEN_WIDTH / 2;
+    ballY = SCREEN_HEIGHT / 2;
+    ballSpeedX = -2;
+    ballSpeedY = 2;
+    leftPlayerScore++;
+    playBuzzer(500, 500); // Play sound on miss
+  }
+
+  // Ball out of bounds (miss) on left side
+  if (ballX - ballRadius <= 0) {
+    ballX = SCREEN_WIDTH / 2;
+    ballY = SCREEN_HEIGHT / 2;
+    ballSpeedX = 2;
+    ballSpeedY = 2;
+    rightPlayerScore++;
+    playBuzzer(500, 500); // Play sound on miss
+  }
+
+  // Draw paddles and ball
+  drawPaddles();
+  drawBall();
+
+  // Display the scores
+  display.setCursor(0, 0);
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.print("L: ");
+  display.print(leftPlayerScore);
+  display.setCursor(SCREEN_WIDTH - 30, 0);
+  display.print("R: ");
+  display.print(rightPlayerScore);
+
+  // Check if either player reached the maximum score
+  if (leftPlayerScore >= maxScore) {
+    declareWinner("Left Player");
+  } else if (rightPlayerScore >= maxScore) {
+    declareWinner("Right Player");
+  }
+
+  display.display();
+}
+
+
+
+
+
+
+
+Ballbounce game
+
+#include <Adafruit_SSD1306.h>
+#include <Wire.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// Pin assignments
+#define JOYSTICK_X_PIN A0
+#define JOYSTICK_Y_PIN A1
+#define BUTTON1_PIN 2  // Button to start/restart the game
+#define BUTTON2_PIN 3  // Optional button (not used in this game)
+#define BUZZER_PIN 8
+
+// Ball properties
+int ballX, ballY;
+int ballSpeedX = 2;
+int ballSpeedY = 2;
+const int ballRadius = 3;
+
+// Paddle properties
+int paddleX;
+const int paddleY = SCREEN_HEIGHT - 10;
+const int paddleWidth = 20;
+const int paddleHeight = 3;
+
+// Game state variables
+int score = 0;
+const int maxScore = 15; // Winning score
+bool gameStarted = false;
+
+void setup() {
+  pinMode(BUTTON1_PIN, INPUT_PULLUP);
+  pinMode(BUTTON2_PIN, INPUT_PULLUP);  // Not used in this game
+  pinMode(BUZZER_PIN, OUTPUT);
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    while (true); // Stay here if the display doesn't initialize
+  }
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  
+  // Display welcome screen
+  welcomeScreen();
+}
+
+void loop() {
+  if (!gameStarted) {
+    // Check if Button 1 is pressed to start the game
+    if (digitalRead(BUTTON1_PIN) == LOW) {
+      gameStarted = true;
+      resetGame();
+    }
+    return; // Exit loop if game hasn't started yet
+  }
+
+  // Move the paddle with the joystick
+  int joystickX = analogRead(JOYSTICK_X_PIN);
+  paddleX = map(joystickX, 0, 1023, 0, SCREEN_WIDTH - paddleWidth);
+
+  // Update ball position
+  updateBallPosition();
+
+  // Check for ball collision with paddle
+  checkPaddleCollision();
+
+  // Draw everything on the display
+  drawGame();
+}
+
+// Display the welcome screen
+void welcomeScreen() {
+  display.setCursor(0, 0);
+  display.println("Ball Bounce Game");
+  display.println("Press Button 1 to Start");
+  display.display();
+}
+
+// Reset the game state
+void resetGame() {
+  ballX = SCREEN_WIDTH / 2; // Center the ball horizontally
+  ballY = 10; // Set ball just below the top of the screen
+  score = 0; // Reset score
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.println("Set Max Score");
+  display.display();
+
+  // Adjust the max score using the joystick
+  adjustMaxScore();
+}
+
+// Adjust maximum score using joystick
+void adjustMaxScore() {
+  int tempScore = 5; // Default starting max score
+  while (true) {
+    // Display current score setting
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.print("Max Score: ");
+    display.print(tempScore);
+    display.display();
+
+    // Read joystick to adjust score
+    int joystickY = analogRead(JOYSTICK_Y_PIN);
+    if (joystickY < 400) { // Joystick moved up
+      tempScore += 5;
+    } else if (joystickY > 600) { // Joystick moved down
+      tempScore = max(5, tempScore - 5); // Minimum score is 5
+    }
+
+    // Break loop if Button 1 is pressed
+    if (digitalRead(BUTTON1_PIN) == LOW) {
+      score = 0; // Reset score
+      display.clearDisplay();
+      display.setCursor(0, 0);
+      display.print("Score: ");
+      display.print(score);
+      display.display();
+      delay(1000); // Pause for visibility
+      break; // Exit score adjustment
+    }
+  }
+}
+
+// Update ball position
+void updateBallPosition() {
+  ballX += ballSpeedX;
+  ballY += ballSpeedY;
+
+  // Ball collision with walls
+  if (ballX - ballRadius <= 0 || ballX + ballRadius >= SCREEN_WIDTH) {
+    ballSpeedX = -ballSpeedX; // Reverse direction on horizontal wall collision
+  }
+  if (ballY - ballRadius <= 0) {
+    ballSpeedY = -ballSpeedY; // Reverse direction on upper wall collision
+  }
+
+  // Check if the ball falls to the bottom (game over)
+  if (ballY + ballRadius >= SCREEN_HEIGHT) {
+    playBuzzer(500, 500); // Play game over sound
+    displayWinner(false);
+    resetGame(); // Reset game
+  }
+}
+
+// Check for ball collision with paddle
+void checkPaddleCollision() {
+  if (ballY + ballRadius >= paddleY && ballX >= paddleX && ballX <= paddleX + paddleWidth) {
+    ballSpeedY = -ballSpeedY; // Reverse direction on paddle collision
+    score++; // Increase score
+    playBuzzer(1200, 100); // Play sound when scoring
+    
+    // Check if the score reaches the winning score
+    if (score >= maxScore) {
+      displayWinner(true);
+      resetGame(); // Reset game after displaying winner
+    }
+  }
+}
+
+// Draw game elements
+void drawGame() {
+  display.clearDisplay();
+  drawPaddle();
+  drawBall();
+  displayScore();
+  display.display();
+}
+
+// Draw paddle
+void drawPaddle() {
+  display.fillRect(paddleX, paddleY, paddleWidth, paddleHeight, SSD1306_WHITE); // Draw paddle
+}
+
+// Draw ball
+void drawBall() {
+  display.fillCircle(ballX, ballY, ballRadius, SSD1306_WHITE); // Draw ball
+}
+
+// Display the current score
+void displayScore() {
+  display.setCursor(0, 0);
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.print("Score: ");
+  display.print(score); // Display current score
+}
+
+// Display winner screen
+void displayWinner(bool hasWon) {
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  if (hasWon) {
+    display.println("Congratulations!");
+    display.println("You Win!");
+  } else {
+    display.println("Game Over");
+    display.println("You Lost!");
+  }
+  display.display();
+  delay(3000); // Show winner screen for 3 seconds
+}
+
+// Play sound on the buzzer
+void playBuzzer(int frequency, int duration) {
+  tone(BUZZER_PIN, frequency, duration); // Play a tone on the buzzer
+  delay(duration); // Wait for the duration to avoid overlapping sounds
+  noTone(BUZZER_PIN); // Stop sound
+}
+
